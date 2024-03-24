@@ -97,22 +97,34 @@ def similarity(img1:torch.Tensor, img2:torch.Tensor, method='euclidean')->float:
 test = CCPD(path=os.path.join("data", "ccpd_green"), train=False)
 test.file_list = test.file_list[-1000:]
 
+test2 = datasets.MNIST('./data', train=False, download=True, transform=transforms.ToTensor())
+# 在MNIST数据集中随机选择1000张图片 使用subset
+test2 = torch.utils.data.Subset(test2, np.random.choice(len(test2), 1000, replace=False))
 
 # 0-9的数字模板
 template_path = os.path.join("data", "NPtemplate")
 template_list = os.listdir(template_path)
 template_list.sort()
 numbers = [cv2.imread(os.path.join(template_path, x), 0) for x in template_list]
-numbers = [cv2.adaptiveThreshold(i, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 61, 20) for i in numbers]
+numbers = [cv2.resize(x, (28, 28)) for x in numbers]
 numbers = [torch.tensor(x).float().view(-1) / 255 for x in numbers]
 
+train = datasets.MNIST('./data', train=True, download=True, transform=transforms.ToTensor())
+# 在MNIST数据集中选择0-9的数字模板
+for i in range(10):
+    idx = np.random.choice(np.where(train.targets == i)[0])
+    img = train.data[idx]
+    img = img.float() / 255
+    img = img.view(-1)
+    numbers.append(img)
+
+
 correct_num = 0
-# 遍历测试集中的每一张图片
+# 遍历CCPD
 for img, label in test:
-    # 280x120
-    img = img.resize((280, 120))
+    # 28x28
+    img = img.resize((28, 28))
     img = np.array(img)
-    img = cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 61, 20)
     # print(img.shape)
     img = torch.tensor(img).float() / 255
     img = img.view(-1)
@@ -123,9 +135,25 @@ for img, label in test:
     # 找到最相似的数字模板
     pred = np.argmax(similarities)
     # print(pred, label)
-    if str(pred) == label:
+    if str(pred%10) == label:
+        correct_num += 1
+    # print(similarities)
+    # input(f'预测值：{pred%10}，真实值：{label}')
+# print(correct_num)
+# print(f'正确率：{correct_num / len(test)}')
+
+# 遍历MNIST
+for img, label in test2:
+    img = img.float() / 255
+    img = img.view(-1)
+    # 计算测试图片与0-9数字模板的相似度
+    similarities = []
+    for number in numbers:
+        similarities.append(similarity(img, number, method='cosine'))
+    # 找到最相似的数字模板
+    pred = np.argmax(similarities)
+    if pred%10 == label:
         correct_num += 1
     # print(similarities)
     # input(f'预测值：{pred}，真实值：{label}')
-# print(correct_num)
-print(f'正确率：{correct_num / len(test)}')
+print(f'正确率：{correct_num / (len(test) + len(test2))}')
